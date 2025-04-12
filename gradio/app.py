@@ -1,24 +1,24 @@
 import gradio as gr
 import requests
 import os
-from langchain.vectorstores.pgvector import PGVector
+from langchain_postgres import PGVector
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # Constants
 API_URL = "https://gpt-ds-model.apps.cluster-v82jh.v82jh.sandbox1208.opentlc.com/v1/completions"
 MODEL_NAME = "gpt"
 
-# PGVector setup
+# PGVector setup with psycopg3
 DB_CONNECTION_STRING = "postgresql+psycopg://vectordb:vectordb@postgresql-service.pgvector.svc.cluster.local:5432/vectordb"
 DB_COLLECTION_NAME = "documents_test"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 
 # Load embeddings and vector store
 embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
-vector_store = PGVector.from_existing_index(
-    embedding=embeddings,
+vector_store = PGVector(
+    embeddings=embeddings,
     collection_name=DB_COLLECTION_NAME,
-    connection_string=DB_CONNECTION_STRING,
+    connection=DB_CONNECTION_STRING,
     use_jsonb=True
 )
 
