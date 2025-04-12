@@ -1,1 +1,8 @@
-gradio==5.11.0
+gradio==4.16.0
+requests
+langchain>=0.2.2
+langchain-huggingface>=0.0.6
+langchain-postgres>=0.0.3
+psycopg[binary]  # For connecting to PostgreSQL
+sentence-transformers
+python-dotenv
