@@ -7,6 +7,9 @@ WORKDIR /usr/src/app
 # Copy application files
 COPY . .
 
+# Set env to avoid HF download
+ENV TRANSFORMERS_CACHE=/app/models
+
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
