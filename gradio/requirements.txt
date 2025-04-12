@@ -1,8 +1,9 @@
 gradio==4.16.0
 requests
 langchain>=0.2.2
+langchain-community>=0.0.17
 langchain-huggingface>=0.0.6
 langchain-postgres>=0.0.3
-psycopg[binary]  # For connecting to PostgreSQL
+psycopg[binary]
 sentence-transformers
 python-dotenv
