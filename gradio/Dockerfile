@@ -7,7 +7,7 @@ USER 1001
 COPY --chown=1001:0 . .
 
 # Set env to avoid HF download
-ENV TRANSFORMERS_CACHE=/app/models
+ENV TRANSFORMERS_CACHE=/opt/app-root/src/models
 
 RUN pip install --no-cache-dir -r requirements.txt && \
     rm -f requirements.txt && \
