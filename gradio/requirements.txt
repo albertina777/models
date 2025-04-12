@@ -3,4 +3,4 @@ requests
 langchain_postgres
 langchain_huggingface
 sentence-transformers
-psycopg3
+psycopg
