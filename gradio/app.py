@@ -11,7 +11,7 @@ MODEL_NAME = "gpt"
 # PGVector setup with psycopg3
 DB_CONNECTION_STRING = "postgresql+psycopg://vectordb:vectordb@postgresql-service.pgvector.svc.cluster.local:5432/vectordb"
 DB_COLLECTION_NAME = "documents_test"
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+EMBEDDING_MODEL_NAME = "./models/all-mpnet-base-v2"
 
 # Load embeddings and vector store
 embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
