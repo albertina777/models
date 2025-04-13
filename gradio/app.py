@@ -19,7 +19,7 @@ load_dotenv()
 
 # Parameters
 
-APP_TITLE = os.getenv('APP_TITLE', 'Talk with your documentation')
+APP_TITLE = os.getenv('APP_TITLE', 'Talk with GPT2')
 
 INFERENCE_SERVER_URL = os.getenv('INFERENCE_SERVER_URL')
 MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 512))
