@@ -1,7 +1,7 @@
 import gradio as gr
 import requests
 import os
-from langchain_postgres import PGVector
+from langchain.vectorstores.pgvector import PGVector
 from langchain_huggingface import HuggingFaceEmbeddings
 
 # Constants
@@ -11,14 +11,14 @@ MODEL_NAME = "gpt"
 # PGVector setup with psycopg3
 DB_CONNECTION_STRING = "postgresql+psycopg://vectordb:vectordb@postgresql-service.pgvector.svc.cluster.local:5432/vectordb"
 DB_COLLECTION_NAME = "documents_test"
-EMBEDDING_MODEL_NAME = "./models/all-mpnet-base-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 
 # Load embeddings and vector store
 embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
-vector_store = PGVector(
-    embeddings=embeddings,
+vector_store = PGVector.from_existing_index(
+    embedding=embeddings,
     collection_name=DB_COLLECTION_NAME,
-    connection=DB_CONNECTION_STRING,
+    connection_string=DB_CONNECTION_STRING,
     use_jsonb=True
 )
 
@@ -50,7 +50,8 @@ def generate_response(question):
         "temperature": 0.7,
         "max_tokens": 200
     }
-    response = requests.post(API_URL, json=payload)
+    headers = {"Connection": "keep-alive"}
+    response = requests.post(API_URL, json=payload, headers=headers)
     return response.json().get("choices", [{}])[0].get("text", "No response")
 
 # Gradio UI
