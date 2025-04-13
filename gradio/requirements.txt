@@ -1,6 +1,7 @@
 gradio
 requests
 langchain
+langchain_community
 langchain_postgres
 langchain_huggingface
 sentence-transformers
