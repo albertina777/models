@@ -1,20 +1,20 @@
 FROM registry.access.redhat.com/ubi9/python-311
 
-# Set working directory
-WORKDIR /app
+WORKDIR /opt/app-root/src
 
-# Use non-root user
 USER 1001
 
-# Copy application code and models
-COPY --chown=1001:0 . .
+COPY --chown=1001:0 requirements.txt ./
 
-# Install dependencies and fix permissions
 RUN pip install --no-cache-dir -r requirements.txt && \
-    rm -f requirements.txt
+    rm -f requirements.txt && \
+    # Fix permissions to support pip in Openshift environments \
+    chmod -R g+w /opt/app-root/lib/python3.11/site-packages && \
+    fix-permissions /opt/app-root -P
 
-# Expose Gradio port
+COPY --chown=1001:0 app.py ./
+COPY --chown=1001:0 assets/ ./assets/
+
 EXPOSE 7860
 
-# Run app
 CMD ["python", "app.py"]
