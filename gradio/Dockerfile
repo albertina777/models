@@ -1,20 +1,23 @@
-FROM registry.access.redhat.com/ubi9/python-311
+ROM registry.access.redhat.com/ubi9/python-311
 
-WORKDIR /opt/app-root/src
+# Set environment variables
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
+# Set working directory
+WORKDIR /app
+
+# Use non-root user
 USER 1001
 
+# Copy application code and models
 COPY --chown=1001:0 . .
 
-# Set env to avoid HF download
-ENV TRANSFORMERS_CACHE=/opt/app-root/src/models
-
+# Install dependencies and fix permissions
 RUN pip install --no-cache-dir -r requirements.txt && \
-    rm -f requirements.txt && \
-    # Fix permissions to support pip in Openshift environments \
-    chmod -R g+w /opt/app-root/lib/python3.11/site-packages && \
-    fix-permissions /opt/app-root -P
+    rm -f requirements.txt
 
+# Expose Gradio port
 EXPOSE 7860
 
+# Run app
 CMD ["python", "app.py"]
