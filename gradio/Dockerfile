@@ -1,4 +1,4 @@
-ROM registry.access.redhat.com/ubi9/python-311
+FROM registry.access.redhat.com/ubi9/python-311
 
 # Set environment variables
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
