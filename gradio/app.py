@@ -62,7 +62,8 @@ class OpenAICompatibleLLM(LLM):
         response = requests.post(
             self.inference_server_url,
             headers=headers,
-            json=payload
+            json=payload,
+            timeout=30
         )
         if response.status_code == 200:
             return response.json().get("choices", [{}])[0].get("text", "").strip()
