@@ -1,19 +1,14 @@
 import os
-from collections.abc import Generator
-from queue import Empty, Queue
-from threading import Thread
-from typing import Optional, List
-
 import gradio as gr
 import requests
 import tiktoken
 from dotenv import load_dotenv
-from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains import RetrievalQA
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.llms.base import LLM
 from langchain.prompts import PromptTemplate
 from langchain.vectorstores.pgvector import PGVector
+from typing import Optional, List
 
 load_dotenv()
 
@@ -25,17 +20,6 @@ TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 
-# Streaming implementation
-class QueueCallback(BaseCallbackHandler):
-    def __init__(self, q):
-        self.q = q
-
-    def on_llm_new_token(self, token: str, **kwargs: any) -> None:
-        self.q.put(token)
-
-    def on_llm_end(self, *args, **kwargs: any) -> None:
-        return self.q.empty()
-
 # Custom LLM class to match curl-style /v1/completions
 class OpenAICompatibleLLM(LLM):
     inference_server_url: str
@@ -44,7 +28,6 @@ class OpenAICompatibleLLM(LLM):
     temperature: float = 0.7
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        # Token-safe prompt truncation using GPT-2 tokenizer
         tokenizer = tiktoken.get_encoding("gpt2")
         prompt_tokens = tokenizer.encode(prompt)
         max_prompt_tokens = 1024 - self.max_tokens
@@ -76,45 +59,14 @@ class OpenAICompatibleLLM(LLM):
 
 # Helper to remove duplicate sources
 def remove_source_duplicates(input_list):
-    unique_list = []
+    seen = set()
+    unique = []
     for item in input_list:
-        if item.metadata['source'] not in unique_list:
-            unique_list.append(item.metadata['source'])
-    return unique_list
-
-# Streaming response
-def stream(input_text) -> Generator:
-    job_done = object()
-
-    def task():
-        resp = qa_chain({"query": input_text})
-        sources = remove_source_duplicates(resp['source_documents'])
-        if len(sources) != 0:
-            q.put("\n*Sources:* \n")
-            for source in sources:
-                q.put("* " + str(source) + "\n")
-        q.put(job_done)
-
-    t = Thread(target=task)
-    t.start()
-
-    content = ""
-    while True:
-        try:
-            next_token = q.get(True, timeout=1)
-            if next_token is job_done:
-                break
-            if isinstance(next_token, str):
-                content += next_token
-                yield next_token, content
-        except Empty:
-            continue
-
-q = Queue()
-
-############################
-# LLM chain implementation #
-############################
+        src = item.metadata['source']
+        if src not in seen:
+            seen.add(src)
+            unique.append(src)
+    return unique
 
 # Document store
 embeddings = HuggingFaceEmbeddings()
@@ -123,7 +75,7 @@ store = PGVector(
     collection_name=DB_COLLECTION_NAME,
     embedding_function=embeddings)
 
-# LLM (OpenAI-compatible)
+# LLM
 llm = OpenAICompatibleLLM(
     inference_server_url=INFERENCE_SERVER_URL,
     model="gpt",
@@ -157,11 +109,23 @@ qa_chain = RetrievalQA.from_chain_type(
     return_source_documents=True
 )
 
-# Gradio app
+# Gradio interface handler
 def ask_llm(message, history):
-    for next_token, content in stream(message):
-        yield(content)
+    try:
+        resp = qa_chain({"query": message})
+        answer = resp["result"]
+        sources = remove_source_duplicates(resp["source_documents"])
 
+        if sources:
+            source_text = "\n\n*Sources:*\n" + "\n".join([f"- {src}" for src in sources])
+        else:
+            source_text = ""
+
+        return answer + source_text
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# Gradio app
 with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     chatbot = gr.Chatbot(
         show_label=False,
@@ -169,7 +133,7 @@ with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
         render=False
     )
     gr.ChatInterface(
-        ask_llm,
+        fn=ask_llm,
         chatbot=chatbot,
         clear_btn=None,
         retry_btn=None,
@@ -179,8 +143,4 @@ with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     )
 
 if __name__ == "__main__":
-    demo.queue().launch(
-        server_name='0.0.0.0',
-        share=False,
-        favicon_path='./assets/robot-head.ico'
-    )
+    demo.launch(server_name="0.0.0.0", share=False, favicon_path="assets/robot-head.ico")
