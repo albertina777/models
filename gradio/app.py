@@ -50,7 +50,7 @@ class OpenAICompatibleLLM(LLM):
                 self.inference_server_url,
                 headers=headers,
                 json=payload,
-                timeout=60  # Increased timeout
+                timeout=120  # Increased timeout
             )
             if response.status_code == 200:
                 return response.json().get("choices", [{}])[0].get("text", "").strip()
