@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import tiktoken
 from dotenv import load_dotenv
@@ -21,7 +22,7 @@ MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 15))
 TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
-MODEL_PATH = "/models/all-mpnet-base-v2"
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "all-mpnet-base-v2")
 
 
 # Custom LLM class to call OpenAI-compatible completions endpoint
@@ -45,6 +46,7 @@ class OpenAICompatibleLLM(LLM):
                 "prompt": prompt,
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
+                "stop": ["\n", "</s>", "Answer:"]
             }
             headers = {"Content-Type": "application/json"}
             response = requests.post(
@@ -54,13 +56,17 @@ class OpenAICompatibleLLM(LLM):
                 timeout=300  # Increased timeout
             )
             if response.status_code == 200:
-                return response.json().get("choices", [{}])[0].get("text", "").strip()
+                raw_text = response.json().get("choices", [{}])[0].get("text", "").strip()
+                return self.clean_response(raw_text)
             else:
                 raise Exception(f"Request failed [{response.status_code}]: {response.text}")
         except requests.exceptions.Timeout:
             return "⚠️ The request timed out. Please try again."
         except Exception as e:
             return f"❌ Error: {str(e)}"
+
+    def clean_response(self, response: str) -> str:
+        return re.sub(r'(\b.+?\b)(\s+\1)+', r'\1', response, flags=re.IGNORECASE)
 
     @property
     def _llm_type(self) -> str:
@@ -97,16 +103,13 @@ llm = OpenAICompatibleLLM(
     temperature=TEMPERATURE
 )
 
-template = """<s>[INST] <<SYS>>
-You are a helpful assistant named HatBot answering questions about OpenShift AI (RHOAI).
-You will be given a question and a context to answer it truthfully based on the context.
-Avoid harmful, unethical, or misleading content.
-<</SYS>>
+template = """System: You are a helpful assistant answering factual questions based on context.
 
 Context:
 {context}
 
-Question: {question} [/INST]
+Question: {question}
+Answer:
 """
 
 QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
@@ -145,7 +148,7 @@ with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     )
 
 if __name__ == "__main__":
-    demo.queue().launch(
+    demo.launch(
         server_name="0.0.0.0",
         share=False,
         favicon_path="./assets/robot-head.ico"
