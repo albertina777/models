@@ -2,6 +2,7 @@ import os
 from collections.abc import Generator
 from queue import Empty, Queue
 from threading import Thread
+from typing import Optional, List
 
 import gradio as gr
 import requests
@@ -12,7 +13,6 @@ from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.llms.base import LLM
 from langchain.prompts import PromptTemplate
 from langchain.vectorstores.pgvector import PGVector
-from typing import Optional, List
 
 load_dotenv()
 
@@ -21,11 +21,10 @@ APP_TITLE = os.getenv('APP_TITLE', 'Talk with GPT2')
 INFERENCE_SERVER_URL = os.getenv('INFERENCE_SERVER_URL')
 MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 15))
 TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
-
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 
-# Streaming implementation
+# Streaming callback
 class QueueCallback(BaseCallbackHandler):
     def __init__(self, q):
         self.q = q
@@ -36,7 +35,7 @@ class QueueCallback(BaseCallbackHandler):
     def on_llm_end(self, *args, **kwargs: any) -> None:
         return self.q.empty()
 
-# Custom LLM class to match curl-style /v1/completions
+# Custom OpenAI-compatible LLM
 class OpenAICompatibleLLM(LLM):
     inference_server_url: str
     model: str = "gpt"
@@ -65,6 +64,7 @@ class OpenAICompatibleLLM(LLM):
     def _llm_type(self) -> str:
         return "openai-compatible"
 
+# Utility to remove duplicate sources
 def remove_source_duplicates(input_list):
     unique_list = []
     for item in input_list:
@@ -72,6 +72,7 @@ def remove_source_duplicates(input_list):
             unique_list.append(item.metadata['source'])
     return unique_list
 
+# Streaming generator
 def stream(input_text) -> Generator:
     job_done = object()
 
@@ -99,20 +100,18 @@ def stream(input_text) -> Generator:
         except Empty:
             continue
 
+# Queue for streaming
 q = Queue()
 
-############################
-# LLM chain implementation #
-############################
-
-# Document store
+# PGVector-based retrieval
 embeddings = HuggingFaceEmbeddings()
 store = PGVector(
     connection_string=DB_CONNECTION_STRING,
     collection_name=DB_COLLECTION_NAME,
-    embedding_function=embeddings)
+    embedding_function=embeddings
+)
 
-# Use OpenAI-compatible wrapper
+# Load custom LLM
 llm = OpenAICompatibleLLM(
     inference_server_url=INFERENCE_SERVER_URL,
     model="gpt",
@@ -120,7 +119,7 @@ llm = OpenAICompatibleLLM(
     temperature=TEMPERATURE
 )
 
-# Prompt
+# Prompt template
 template = """<s>[INST] <<SYS>>
 You are a helpful, respectful and honest assistant named HatBot answering questions about OpenShift AI, aka RHOAI.
 You will be given a question you need to answer, and a context to provide you with information. You must answer the question based as much as possible on this context.
@@ -136,11 +135,13 @@ Question: {question} [/INST]
 """
 QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
+# RAG setup
 qa_chain = RetrievalQA.from_chain_type(
     llm,
     retriever=store.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": 4, "score_threshold": 0.2 }),
+        search_kwargs={"k": 4, "score_threshold": 0.2}
+    ),
     chain_type_kwargs={"prompt": QA_CHAIN_PROMPT},
     return_source_documents=True
 )
