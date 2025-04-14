@@ -43,6 +43,12 @@ class OpenAICompatibleLLM(LLM):
     temperature: float = 0.7
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+        # Truncate prompt if it's too long
+        max_prompt_tokens = 1024 - self.max_tokens
+        prompt_words = prompt.split()
+        if len(prompt_words) > max_prompt_tokens:
+            prompt = " ".join(prompt_words[:max_prompt_tokens])
+
         payload = {
             "model": self.model,
             "prompt": prompt,
