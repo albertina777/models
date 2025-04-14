@@ -1,5 +1,4 @@
 import os
-import re
 import requests
 import tiktoken
 from dotenv import load_dotenv
@@ -10,7 +9,6 @@ from langchain.prompts import PromptTemplate
 from langchain.vectorstores.pgvector import PGVector
 from langchain.callbacks.base import BaseCallbackHandler
 from typing import Optional, List
-
 import gradio as gr
 
 load_dotenv()
@@ -19,7 +17,7 @@ load_dotenv()
 APP_TITLE = os.getenv('APP_TITLE', 'Talk with GPT2')
 INFERENCE_SERVER_URL = os.getenv('INFERENCE_SERVER_URL')
 MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 15))
-TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
+TEMPERATURE = float(os.getenv('TEMPERATURE', 0.5))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 MODEL_PATH = "/models/all-mpnet-base-v2"
@@ -30,7 +28,7 @@ class OpenAICompatibleLLM(LLM):
     inference_server_url: str
     model: str = "gpt"
     max_tokens: int = 15
-    temperature: float = 0.7
+    temperature: float = 0.5
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         try:
@@ -46,18 +44,16 @@ class OpenAICompatibleLLM(LLM):
                 "prompt": prompt,
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
-                "stop": ["\n", "</s>", "Answer:"]
             }
             headers = {"Content-Type": "application/json"}
             response = requests.post(
                 self.inference_server_url,
                 headers=headers,
                 json=payload,
-                timeout=300  # Increased timeout
+                timeout=300
             )
             if response.status_code == 200:
-                raw_text = response.json().get("choices", [{}])[0].get("text", "").strip()
-                return self.clean_response(raw_text)
+                return response.json().get("choices", [{}])[0].get("text", "").strip()
             else:
                 raise Exception(f"Request failed [{response.status_code}]: {response.text}")
         except requests.exceptions.Timeout:
@@ -65,15 +61,11 @@ class OpenAICompatibleLLM(LLM):
         except Exception as e:
             return f"❌ Error: {str(e)}"
 
-    def clean_response(self, response: str) -> str:
-        return re.sub(r'(\b.+?\b)(\s+\1)+', r'\1', response, flags=re.IGNORECASE)
-
     @property
     def _llm_type(self) -> str:
         return "openai-compatible"
 
 
-# Helper to remove duplicate sources
 def remove_source_duplicates(input_list):
     seen_sources = set()
     unique_sources = []
@@ -84,10 +76,6 @@ def remove_source_duplicates(input_list):
             unique_sources.append(source)
     return unique_sources
 
-
-############################
-# LLM chain implementation #
-############################
 
 embeddings = HuggingFaceEmbeddings(model_name=MODEL_PATH)
 store = PGVector(
@@ -103,14 +91,13 @@ llm = OpenAICompatibleLLM(
     temperature=TEMPERATURE
 )
 
-template = """System: You are a helpful assistant answering factual questions based on context.
+template = """You are an assistant that answers questions based only on the context provided.
 
 Context:
 {context}
 
-Question: {question}
-Answer:
-"""
+Q: {question}
+A:"""
 
 QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
@@ -125,7 +112,6 @@ qa_chain = RetrievalQA.from_chain_type(
 )
 
 
-# Gradio Interface
 def ask_llm(message, history):
     response = qa_chain({"query": message})
     answer = response["result"]
@@ -148,7 +134,7 @@ with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(
+    demo.queue().launch(
         server_name="0.0.0.0",
         share=False,
         favicon_path="./assets/robot-head.ico"
