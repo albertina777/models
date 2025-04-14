@@ -6,6 +6,7 @@ from typing import Optional, List
 
 import gradio as gr
 import requests
+import tiktoken
 from dotenv import load_dotenv
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.chains import RetrievalQA
@@ -24,7 +25,7 @@ TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 
-# Streaming callback
+# Streaming implementation
 class QueueCallback(BaseCallbackHandler):
     def __init__(self, q):
         self.q = q
@@ -35,7 +36,7 @@ class QueueCallback(BaseCallbackHandler):
     def on_llm_end(self, *args, **kwargs: any) -> None:
         return self.q.empty()
 
-# Custom OpenAI-compatible LLM
+# Custom LLM class to match curl-style /v1/completions
 class OpenAICompatibleLLM(LLM):
     inference_server_url: str
     model: str = "gpt"
@@ -43,11 +44,13 @@ class OpenAICompatibleLLM(LLM):
     temperature: float = 0.7
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-        # Truncate prompt if it's too long
+        # Token-safe prompt truncation using GPT-2 tokenizer
+        tokenizer = tiktoken.get_encoding("gpt2")
+        prompt_tokens = tokenizer.encode(prompt)
         max_prompt_tokens = 1024 - self.max_tokens
-        prompt_words = prompt.split()
-        if len(prompt_words) > max_prompt_tokens:
-            prompt = " ".join(prompt_words[:max_prompt_tokens])
+        if len(prompt_tokens) > max_prompt_tokens:
+            prompt_tokens = prompt_tokens[:max_prompt_tokens]
+            prompt = tokenizer.decode(prompt_tokens)
 
         payload = {
             "model": self.model,
@@ -70,7 +73,7 @@ class OpenAICompatibleLLM(LLM):
     def _llm_type(self) -> str:
         return "openai-compatible"
 
-# Utility to remove duplicate sources
+# Helper to remove duplicate sources
 def remove_source_duplicates(input_list):
     unique_list = []
     for item in input_list:
@@ -78,7 +81,7 @@ def remove_source_duplicates(input_list):
             unique_list.append(item.metadata['source'])
     return unique_list
 
-# Streaming generator
+# Streaming response
 def stream(input_text) -> Generator:
     job_done = object()
 
@@ -106,18 +109,20 @@ def stream(input_text) -> Generator:
         except Empty:
             continue
 
-# Queue for streaming
 q = Queue()
 
-# PGVector-based retrieval
+############################
+# LLM chain implementation #
+############################
+
+# Document store
 embeddings = HuggingFaceEmbeddings()
 store = PGVector(
     connection_string=DB_CONNECTION_STRING,
     collection_name=DB_COLLECTION_NAME,
-    embedding_function=embeddings
-)
+    embedding_function=embeddings)
 
-# Load custom LLM
+# LLM (OpenAI-compatible)
 llm = OpenAICompatibleLLM(
     inference_server_url=INFERENCE_SERVER_URL,
     model="gpt",
@@ -141,18 +146,17 @@ Question: {question} [/INST]
 """
 QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
-# RAG setup
+# Chain
 qa_chain = RetrievalQA.from_chain_type(
     llm,
     retriever=store.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": 4, "score_threshold": 0.2}
-    ),
+        search_kwargs={"k": 4, "score_threshold": 0.2 }),
     chain_type_kwargs={"prompt": QA_CHAIN_PROMPT},
     return_source_documents=True
 )
 
-# Gradio interface
+# Gradio app
 def ask_llm(message, history):
     for next_token, content in stream(message):
         yield(content)
