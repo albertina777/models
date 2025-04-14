@@ -7,8 +7,8 @@ from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.llms.base import LLM
 from langchain.prompts import PromptTemplate
 from langchain.vectorstores.pgvector import PGVector
+from langchain.callbacks.base import BaseCallbackHandler
 from typing import Optional, List
-
 import gradio as gr
 
 load_dotenv()
@@ -17,16 +17,17 @@ load_dotenv()
 APP_TITLE = os.getenv('APP_TITLE', 'Talk with GPT2')
 INFERENCE_SERVER_URL = os.getenv('INFERENCE_SERVER_URL')
 MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 15))
-TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
+TEMPERATURE = float(os.getenv('TEMPERATURE', 0.5))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 
-# Custom LLM class for GPT-2 inference
+
+# Custom LLM class to call OpenAI-compatible completions endpoint
 class OpenAICompatibleLLM(LLM):
     inference_server_url: str
     model: str = "gpt"
     max_tokens: int = 15
-    temperature: float = 0.7
+    temperature: float = 0.5
 
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         try:
@@ -63,7 +64,6 @@ class OpenAICompatibleLLM(LLM):
     def _llm_type(self) -> str:
         return "openai-compatible"
 
-# Remove duplicate sources
 
 def remove_source_duplicates(input_list):
     seen_sources = set()
@@ -75,9 +75,6 @@ def remove_source_duplicates(input_list):
             unique_sources.append(source)
     return unique_sources
 
-############################
-# RAG Pipeline Setup       #
-############################
 
 embeddings = HuggingFaceEmbeddings()
 store = PGVector(
@@ -93,19 +90,15 @@ llm = OpenAICompatibleLLM(
     temperature=TEMPERATURE
 )
 
-# Better prompt for GPT-2
-prompt_template = """
-You are a helpful assistant named HatBot answering user questions based only on the given context.
-Keep answers concise and factual.
+template = """You are an assistant that answers questions based only on the context provided.
 
 Context:
 {context}
 
-Question: {question}
-Answer:
-"""
+Q: {question}
+A:"""
 
-QA_CHAIN_PROMPT = PromptTemplate.from_template(prompt_template)
+QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
 qa_chain = RetrievalQA.from_chain_type(
     llm,
@@ -117,21 +110,15 @@ qa_chain = RetrievalQA.from_chain_type(
     return_source_documents=True
 )
 
-# Gradio Interface
 
 def ask_llm(message, history):
     response = qa_chain({"query": message})
     answer = response["result"]
     sources = remove_source_duplicates(response["source_documents"])
-
-    # Force print context used for debugging
-    print("\n--- CONTEXT USED ---")
-    for doc in response["source_documents"]:
-        print(doc.metadata.get("source"), "|", doc.page_content[:100])
-
     if sources:
         answer += "\n\n**Sources:**\n" + "\n".join([f"- {src}" for src in sources])
     return answer
+
 
 with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     chatbot = gr.Chatbot(
