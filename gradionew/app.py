@@ -7,7 +7,6 @@ from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from langchain.llms.base import LLM
 from langchain.prompts import PromptTemplate
 from langchain.vectorstores.pgvector import PGVector
-from langchain.callbacks.base import BaseCallbackHandler
 from typing import Optional, List
 
 import gradio as gr
@@ -22,8 +21,7 @@ TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
 
-
-# Custom LLM class to call OpenAI-compatible completions endpoint
+# Custom LLM class for GPT-2 inference
 class OpenAICompatibleLLM(LLM):
     inference_server_url: str
     model: str = "gpt"
@@ -50,7 +48,7 @@ class OpenAICompatibleLLM(LLM):
                 self.inference_server_url,
                 headers=headers,
                 json=payload,
-                timeout=300  # Increased timeout
+                timeout=300
             )
             if response.status_code == 200:
                 return response.json().get("choices", [{}])[0].get("text", "").strip()
@@ -65,8 +63,8 @@ class OpenAICompatibleLLM(LLM):
     def _llm_type(self) -> str:
         return "openai-compatible"
 
+# Remove duplicate sources
 
-# Helper to remove duplicate sources
 def remove_source_duplicates(input_list):
     seen_sources = set()
     unique_sources = []
@@ -77,9 +75,8 @@ def remove_source_duplicates(input_list):
             unique_sources.append(source)
     return unique_sources
 
-
 ############################
-# LLM chain implementation #
+# RAG Pipeline Setup       #
 ############################
 
 embeddings = HuggingFaceEmbeddings()
@@ -96,19 +93,19 @@ llm = OpenAICompatibleLLM(
     temperature=TEMPERATURE
 )
 
-template = """<s>[INST] <<SYS>>
-You are a helpful assistant named HatBot answering questions about OpenShift AI (RHOAI).
-You will be given a question and a context to answer it truthfully based on the context.
-Avoid harmful, unethical, or misleading content.
-<</SYS>>
+# Better prompt for GPT-2
+prompt_template = """
+You are a helpful assistant named HatBot answering user questions based only on the given context.
+Keep answers concise and factual.
 
 Context:
 {context}
 
-Question: {question} [/INST]
+Question: {question}
+Answer:
 """
 
-QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
+QA_CHAIN_PROMPT = PromptTemplate.from_template(prompt_template)
 
 qa_chain = RetrievalQA.from_chain_type(
     llm,
@@ -120,16 +117,21 @@ qa_chain = RetrievalQA.from_chain_type(
     return_source_documents=True
 )
 
-
 # Gradio Interface
+
 def ask_llm(message, history):
     response = qa_chain({"query": message})
     answer = response["result"]
     sources = remove_source_duplicates(response["source_documents"])
+
+    # Force print context used for debugging
+    print("\n--- CONTEXT USED ---")
+    for doc in response["source_documents"]:
+        print(doc.metadata.get("source"), "|", doc.page_content[:100])
+
     if sources:
         answer += "\n\n**Sources:**\n" + "\n".join([f"- {src}" for src in sources])
     return answer
-
 
 with gr.Blocks(title="RHOAI HatBot", css="footer {visibility: hidden}") as demo:
     chatbot = gr.Chatbot(
