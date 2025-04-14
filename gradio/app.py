@@ -22,7 +22,7 @@ MAX_NEW_TOKENS = int(os.getenv('MAX_NEW_TOKENS', 15))
 TEMPERATURE = float(os.getenv('TEMPERATURE', 0.01))
 DB_CONNECTION_STRING = os.getenv('DB_CONNECTION_STRING')
 DB_COLLECTION_NAME = os.getenv('DB_COLLECTION_NAME')
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "all-mpnet-base-v2")
+MODEL_PATH = "/models/all-mpnet-base-v2"
 
 
 # Custom LLM class to call OpenAI-compatible completions endpoint
