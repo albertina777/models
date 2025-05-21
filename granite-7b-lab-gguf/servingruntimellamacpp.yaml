@@ -1,0 +1,42 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: ServingRuntime
+metadata:
+  name: llama-cpp-runtime
+spec:
+  supportedModelFormats:
+    - name: gguf
+      version: "1"
+      autoSelect: true
+  containers:
+    - name: kserve-container
+      image: ghcr.io/ggml-org/llama.cpp:full
+      command:
+        - /bin/bash
+        - -c
+      args:
+        - |
+          pip install --no-cache-dir --target=/tmp/.local llama-cpp-python uvicorn fastapi starlette sse-starlette starlette-context diskcache typing-inspection numpy jinja2 pydantic pydantic-core pydantic-settings && \
+          export PYTHONPATH=/tmp/.local:$PYTHONPATH && \
+          python3 -m llama_cpp.server \
+            --model /mnt/models/granite-7b-lab-Q4_K_M.gguf \
+            --host 0.0.0.0 \
+            --port 8000
+      ports:
+        - containerPort: 8000
+      env:
+        - name: HF_HOME
+          value: /tmp/hf_home
+      resources:
+        limits:
+          cpu: "4"
+          memory: 8Gi
+        requests:
+          cpu: "2"
+          memory: 4Gi
+  multiModel: false
+  protocolVersions:
+    - v1
+  replicas: 1
+  supportedProtocols:
+    - http
+
